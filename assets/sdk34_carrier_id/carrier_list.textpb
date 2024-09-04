@@ -83,12 +83,10 @@ carrier_id {
   carrier_attribute {
     mccmnc_tuple: "20416"
     gid1: "FF"
-    gid1: "8F"
-    gid1: "4E4C"
   }
   carrier_attribute {
     mccmnc_tuple: "20416"
-    spn: "Odido"
+    spn: "T-Mobile NL"
   }
 }
 carrier_id {
@@ -222,7 +220,6 @@ carrier_id {
     spn: "vodafone GR"
     spn: "CU"
     spn: "CU-X"
-    spn: ""
   }
 }
 carrier_id {
@@ -10174,6 +10171,13 @@ carrier_id {
   }
 }
 carrier_id {
+  canonical_id: 2399
+  carrier_name: "Vodafone"
+  carrier_attribute {
+    mccmnc_tuple: "20205"
+  }
+}
+carrier_id {
   canonical_id: 2401
   carrier_name: "Magyar Telekom"
   carrier_attribute {
@@ -10677,6 +10681,19 @@ carrier_id {
   carrier_name: "Emergency Services Network"
   carrier_attribute {
     mccmnc_tuple: "23471"
+  }
+}
+carrier_id {
+  canonical_id: 2468
+  carrier_name: "Tele2"
+  carrier_attribute {
+    mccmnc_tuple: "20416"
+    gid1: "8F"
+    gid1: "4E4C"
+  }
+  carrier_attribute {
+    mccmnc_tuple: "20416"
+    spn: "Tele2 NL"
   }
 }
 carrier_id {
@@ -12053,9 +12070,12 @@ carrier_id {
     mccmnc_tuple: "72454"
     mccmnc_tuple: "90101"
     mccmnc_tuple: "90131"
-    mccmnc_tuple: "90161"
     mccmnc_tuple: "311588"
     mccmnc_tuple: "732101"
+    gid1: "536E617065"
+  }
+  carrier_attribute {
+    mccmnc_tuple: "90161"
     gid1: "536E617065"
   }
 }
@@ -12100,20 +12120,39 @@ carrier_id {
   canonical_id: 2637
   carrier_name: "1Global"
   carrier_attribute {
-    mccmnc_tuple: "20404"
-    mccmnc_tuple: "20408"
     mccmnc_tuple: "20433"
-    mccmnc_tuple: "20809"
+    gid1: "31474C424C2D573030"
+  }
+  carrier_attribute {
     mccmnc_tuple: "20812"
+    gid1: "31474C424C2D573030"
+  }
+  carrier_attribute {
     mccmnc_tuple: "21427"
+    gid1: "31474C424C2D573030"
+  }
+  carrier_attribute {
     mccmnc_tuple: "23425"
+    gid1: "31474C424C2D573030"
+  }
+  carrier_attribute {
     mccmnc_tuple: "26033"
+    gid1: "31474C424C2D573030"
+  }
+  carrier_attribute {
     mccmnc_tuple: "26242"
+    gid1: "31474C424C2D573030"
+  }
+  carrier_attribute {
     mccmnc_tuple: "310300"
-    mccmnc_tuple: "45400"
+    gid1: "31474C424C2D573030"
+  }
+  carrier_attribute {
     mccmnc_tuple: "45408"
+    gid1: "31474C424C2D573030"
+  }
+  carrier_attribute {
     mccmnc_tuple: "50538"
-    mccmnc_tuple: "23410"
     gid1: "31474C424C2D573030"
   }
 }
@@ -12524,4 +12563,4 @@ carrier_id {
   }
   parent_canonical_id: 1779
 }
-version: 134217765
+version: 117440549
