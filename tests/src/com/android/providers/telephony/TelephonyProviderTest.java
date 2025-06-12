@@ -62,7 +62,6 @@ import androidx.test.filters.SmallTest;
 
 import com.android.internal.telephony.LocalLog;
 import com.android.internal.telephony.PhoneFactory;
-import com.android.internal.telephony.flags.Flags;
 
 import org.junit.After;
 import org.junit.Before;
@@ -268,6 +267,14 @@ public class TelephonyProviderTest {
 
         contentValues.put(SimInfo.COLUMN_IS_SATELLITE_PROVISIONED_FOR_NON_IP_DATAGRAM,
                 arbitraryIntVal);
+        contentValues.put(SimInfo.COLUMN_SATELLITE_ENTITLEMENT_BARRED_PLMNS, arbitraryStringVal);
+        contentValues.put(SimInfo.COLUMN_SATELLITE_ENTITLEMENT_DATA_PLAN_PLMNS, arbitraryStringVal);
+        contentValues.put(SimInfo.COLUMN_SATELLITE_ENTITLEMENT_SERVICE_TYPE_MAP,
+                arbitraryStringVal);
+        contentValues.put(SimInfo.COLUMN_SATELLITE_ENTITLEMENT_DATA_SERVICE_POLICY,
+                arbitraryStringVal);
+        contentValues.put(SimInfo.COLUMN_SATELLITE_ENTITLEMENT_VOICE_SERVICE_POLICY,
+                arbitraryStringVal);
         return contentValues;
     }
 
@@ -769,6 +776,11 @@ public class TelephonyProviderTest {
         final String insertSatelliteEntitlementPlmns = "examplePlmns";
         final int insertCarrierRoamingNtn = 1;
         final int insertIsSatelliteProvisioned = 1;
+        final String insertSatelliteEntitlementBarredPlmns = "exampleBarredPlmns";
+        final String insertSatelliteEntitlementDataPlanPlmns = "exampleDataPlanPlmns";
+        final String insertSatelliteEntitlementServiceTypeMap = "exampleServiceTypeMap";
+        final String insertSatelliteEntitlementDataServicePolicy = "exampleDataServicePolicy";
+        final String insertSatelliteEntitlementVoiceServicePolicy = "exampleVoiceServicePolicy";
         contentValues.put(SubscriptionManager.UNIQUE_KEY_SUBSCRIPTION_ID, insertSubId);
         contentValues.put(SubscriptionManager.DISPLAY_NAME, insertDisplayName);
         contentValues.put(SubscriptionManager.CARRIER_NAME, insertCarrierName);
@@ -790,6 +802,16 @@ public class TelephonyProviderTest {
         contentValues.put(SubscriptionManager.SATELLITE_ESOS_SUPPORTED, insertCarrierRoamingNtn);
         contentValues.put(SubscriptionManager.IS_SATELLITE_PROVISIONED_FOR_NON_IP_DATAGRAM,
                 insertIsSatelliteProvisioned);
+        contentValues.put(SubscriptionManager.SATELLITE_ENTITLEMENT_BARRED_PLMNS,
+                insertSatelliteEntitlementBarredPlmns);
+        contentValues.put(SubscriptionManager.SATELLITE_ENTITLEMENT_DATA_PLAN_PLMNS,
+                insertSatelliteEntitlementDataPlanPlmns);
+        contentValues.put(SubscriptionManager.SATELLITE_ENTITLEMENT_SERVICE_TYPE_MAP,
+                insertSatelliteEntitlementServiceTypeMap);
+        contentValues.put(SubscriptionManager.SATELLITE_ENTITLEMENT_DATA_SERVICE_POLICY,
+                insertSatelliteEntitlementDataServicePolicy);
+        contentValues.put(SubscriptionManager.SATELLITE_ENTITLEMENT_VOICE_SERVICE_POLICY,
+                insertSatelliteEntitlementVoiceServicePolicy);
 
         Log.d(TAG, "testSimTable Inserting contentValues: " + contentValues);
         mContentResolver.insert(SimInfo.CONTENT_URI, contentValues);
@@ -811,7 +833,12 @@ public class TelephonyProviderTest {
             SubscriptionManager.SATELLITE_ENTITLEMENT_STATUS,
             SubscriptionManager.SATELLITE_ENTITLEMENT_PLMNS,
             SubscriptionManager.SATELLITE_ESOS_SUPPORTED,
-            SubscriptionManager.IS_SATELLITE_PROVISIONED_FOR_NON_IP_DATAGRAM
+            SubscriptionManager.IS_SATELLITE_PROVISIONED_FOR_NON_IP_DATAGRAM,
+            SubscriptionManager.SATELLITE_ENTITLEMENT_BARRED_PLMNS,
+            SubscriptionManager.SATELLITE_ENTITLEMENT_DATA_PLAN_PLMNS,
+            SubscriptionManager.SATELLITE_ENTITLEMENT_SERVICE_TYPE_MAP,
+            SubscriptionManager.SATELLITE_ENTITLEMENT_DATA_SERVICE_POLICY,
+            SubscriptionManager.SATELLITE_ENTITLEMENT_VOICE_SERVICE_POLICY
         };
         final String selection = SubscriptionManager.DISPLAY_NAME + "=?";
         String[] selectionArgs = { insertDisplayName };
@@ -839,6 +866,11 @@ public class TelephonyProviderTest {
         final String resultSatelliteEntitlementPlmns = cursor.getString(12);
         final int resultCarrierRoamingNtn = cursor.getInt(13);
         final int resultIsSatelliteProvisioned = cursor.getInt(14);
+        final String resultSatelliteEntitlementBarredPlmns = cursor.getString(15);
+        final String resultSatelliteEntitlementDataPlanPlmns = cursor.getString(16);
+        final String resultSatelliteEntitlementServiceTypeMap = cursor.getString(17);
+        final String resultSatelliteEntitlementDataServicePolicy = cursor.getString(18);
+        final String resultSatelliteEntitlementVoiceServicePolicy = cursor.getString(19);
         assertEquals(insertSubId, resultSubId);
         assertEquals(insertCarrierName, resultCarrierName);
         assertEquals(insertCardId, resultCardId);
@@ -854,6 +886,16 @@ public class TelephonyProviderTest {
         assertEquals(insertSatelliteEntitlementPlmns, resultSatelliteEntitlementPlmns);
         assertEquals(insertCarrierRoamingNtn, resultCarrierRoamingNtn);
         assertEquals(insertIsSatelliteProvisioned, resultIsSatelliteProvisioned);
+        assertEquals(insertSatelliteEntitlementBarredPlmns, resultSatelliteEntitlementBarredPlmns);
+        assertEquals(insertSatelliteEntitlementDataPlanPlmns,
+                resultSatelliteEntitlementDataPlanPlmns);
+        assertEquals(insertSatelliteEntitlementServiceTypeMap,
+                resultSatelliteEntitlementServiceTypeMap);
+        assertEquals(insertSatelliteEntitlementDataServicePolicy,
+                resultSatelliteEntitlementDataServicePolicy);
+        assertEquals(insertSatelliteEntitlementVoiceServicePolicy,
+                resultSatelliteEntitlementVoiceServicePolicy);
+
 
         // delete test content
         final String selectionToDelete = SubscriptionManager.DISPLAY_NAME + "=?";
@@ -934,6 +976,21 @@ public class TelephonyProviderTest {
                 getIntValueFromCursor(cursor, SimInfo.COLUMN_SATELLITE_ESOS_SUPPORTED));
         assertEquals(ARBITRARY_SIMINFO_DB_TEST_INT_VALUE_1, getIntValueFromCursor(cursor,
                 SimInfo.COLUMN_IS_SATELLITE_PROVISIONED_FOR_NON_IP_DATAGRAM));
+        assertEquals(ARBITRARY_SIMINFO_DB_TEST_STRING_VALUE_1,
+                getStringValueFromCursor(cursor,
+                        SimInfo.COLUMN_SATELLITE_ENTITLEMENT_BARRED_PLMNS));
+        assertEquals(ARBITRARY_SIMINFO_DB_TEST_STRING_VALUE_1,
+                getStringValueFromCursor(cursor,
+                        SimInfo.COLUMN_SATELLITE_ENTITLEMENT_DATA_PLAN_PLMNS));
+        assertEquals(ARBITRARY_SIMINFO_DB_TEST_STRING_VALUE_1,
+                getStringValueFromCursor(cursor,
+                        SimInfo.COLUMN_SATELLITE_ENTITLEMENT_SERVICE_TYPE_MAP));
+        assertEquals(ARBITRARY_SIMINFO_DB_TEST_STRING_VALUE_1,
+                getStringValueFromCursor(cursor,
+                        SimInfo.COLUMN_SATELLITE_ENTITLEMENT_DATA_SERVICE_POLICY));
+        assertEquals(ARBITRARY_SIMINFO_DB_TEST_STRING_VALUE_1,
+                getStringValueFromCursor(cursor,
+                        SimInfo.COLUMN_SATELLITE_ENTITLEMENT_VOICE_SERVICE_POLICY));
         assertRestoredSubIdIsRemembered();
     }
 
@@ -1074,25 +1131,11 @@ public class TelephonyProviderTest {
     public void testBackupForAllowedNetworkTypesForReasons() {
         // If the Backup&Restore for 2g setting feature flag is enabled, backup data must contain
         // allowed network type reasons data.
-        mSetFlagsRule.enableFlags(Flags.FLAG_BACKUP_AND_RESTORE_FOR_ENABLE_2G);
         String backupDataFeatureTrue = new String(getBackupData(new ContentValues[] {
                 BACKED_UP_SIM_INFO_VALUES_WITH_ALLOWED_NETWORK_REASONS}));
         Log.d(TAG, "backupData with feature flag as true:" + new String(backupDataFeatureTrue));
         // Verify that backupdata have expected allowed network types.
         assertTrue(backupDataFeatureTrue.contains(
-                ARBITRARY_ALLOWED_NETWORK_TYPES_BACKUP_STRING_VALUE));
-    }
-
-    @Test
-    public void testBackupForAllowedNetworkTypesForReasonsWithFeatureDisabled() {
-        // If the Backup&Restore for 2g setting feature flag is disabled, backup data must not
-        // contain any of allowed network type reasons data.
-        mSetFlagsRule.disableFlags(Flags.FLAG_BACKUP_AND_RESTORE_FOR_ENABLE_2G);
-        String backupDataFeatureFalse = new String(getBackupData(new ContentValues[]{
-                BACKED_UP_SIM_INFO_VALUES_WITH_ALLOWED_NETWORK_REASONS}));
-        Log.d(TAG, "backupData with feature flag as false:" + new String(backupDataFeatureFalse));
-        // Verify that backupdata does not have allowed network types.
-        assertFalse(backupDataFeatureFalse.contains(
                 ARBITRARY_ALLOWED_NETWORK_TYPES_BACKUP_STRING_VALUE));
     }
 
@@ -1125,8 +1168,6 @@ public class TelephonyProviderTest {
 
     @Test
     public void testBackupAndRestoreForAllowedNetworkTypesForReasons() {
-        mSetFlagsRule.enableFlags(Flags.FLAG_BACKUP_AND_RESTORE_FOR_ENABLE_2G);
-
         backupForAllowedNetworkTypesForReasons();
         Cursor cursor = restoreForAllowedNetworkTypesForReasons();
         cursor.moveToFirst();
@@ -1135,20 +1176,6 @@ public class TelephonyProviderTest {
         assertEquals(ARBITRARY_ALLOWED_NETWORK_TYPES_BACKUP_STRING_VALUE,
                 getStringValueFromCursor(cursor,
                         SimInfo.COLUMN_ALLOWED_NETWORK_TYPES_FOR_REASONS));
-        assertRestoredSubIdIsRemembered();
-    }
-
-    @Test
-    public void testBackupAndRestoreForAllowedNetworkTypesForReasonsWithFeatureDisabled() {
-        mSetFlagsRule.disableFlags(Flags.FLAG_BACKUP_AND_RESTORE_FOR_ENABLE_2G);
-
-        backupForAllowedNetworkTypesForReasons();
-        Cursor cursor = restoreForAllowedNetworkTypesForReasons();
-        cursor.moveToFirst();
-
-        // Ensure network types reason values got updated. Only enable_2g needs to be updated.
-        assertNull(getStringValueFromCursor(cursor,
-                SimInfo.COLUMN_ALLOWED_NETWORK_TYPES_FOR_REASONS));
         assertRestoredSubIdIsRemembered();
     }
 
