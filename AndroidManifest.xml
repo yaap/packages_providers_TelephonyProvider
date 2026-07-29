@@ -50,6 +50,9 @@
     <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>
     <!-- Needed to query for role holders -->
     <uses-permission android:name="android.permission.MANAGE_ROLE_HOLDERS"/>
+    <!-- Needed to query for whether the device is managed by an enterprise admin -->
+    <uses-permission android:name="android.permission.MANAGE_USERS"/>
+    <uses-permission android:name="android.permission.QUERY_DOMAIN_VERIFICATION" />
 
     <application android:process="com.android.phone"
                  android:allowClearUserData="false"
@@ -118,6 +121,7 @@
                   android:exported="true"
                   android:singleUser="true"
                   android:multiprocess="false"
+                  android:readPermission="android.permission.READ_PHONE_STATE"
                   android:writePermission="android.permission.MODIFY_PHONE_STATE" />
 
         <provider android:name="HbpcdLookupProvider"
@@ -125,6 +129,7 @@
                   android:exported="true"
                   android:singleUser="true"
                   android:multiprocess="false"
+                  android:readPermission="android.permission.READ_PHONE_STATE"
                   android:writePermission="android.permission.MODIFY_PHONE_STATE" />
 
         <provider android:name="CarrierIdProvider"

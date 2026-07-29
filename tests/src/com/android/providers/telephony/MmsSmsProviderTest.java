@@ -16,6 +16,7 @@
 
 package com.android.providers.telephony;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
@@ -24,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -32,12 +34,16 @@ import static org.mockito.Mockito.when;
 import android.app.AppOpsManager;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.UserHandle;
+import android.platform.test.annotations.DisableFlags;
+import android.platform.test.annotations.EnableFlags;
+import android.platform.test.flag.junit.SetFlagsRule;
 import android.provider.Telephony;
 import android.telephony.SmsManager;
 import android.telephony.SubscriptionInfo;
@@ -47,6 +53,8 @@ import android.test.mock.MockContentResolver;
 import android.util.Log;
 
 import androidx.test.core.app.ApplicationProvider;
+
+import com.android.internal.telephony.flags.Flags;
 
 import org.junit.After;
 import org.junit.Before;
@@ -71,6 +79,8 @@ public class MmsSmsProviderTest {
     private SmsProviderTestable mSmsProviderTestable;
     @Rule
     public final MockitoRule mocks = MockitoJUnit.rule();
+    @Rule
+    public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
     @Mock
     private PackageManager mPackageManager;
     @Mock
@@ -82,6 +92,7 @@ public class MmsSmsProviderTest {
     public void setUp() throws Exception {
         logd("Setup!");
         mContext = spy(ApplicationProvider.getApplicationContext());
+        doNothing().when(mContext).sendBroadcast(any());
         PackageManager pm = mContext.getPackageManager();
 
         // Check for telephony messaging feature
@@ -90,12 +101,19 @@ public class MmsSmsProviderTest {
         assumeTrue("Device does not support FEATURE_TELEPHONY_MESSAGING, skipping test",
                 hasTelephonyMessaging);
 
-        mMmsSmsProvider = new MmsSmsProvider();
+        mMmsSmsProvider = new MmsSmsProvider() {
+            @Override
+            protected String getOtpFilter(int callerUid, String callingPackage,
+                    UserHandle callerUserHandle) {
+                return "";
+            }
+        };
         mSmsProviderTestable = new SmsProviderTestable();
 
         // Common mock setup
         when(mContext.getSystemService(eq(Context.APP_OPS_SERVICE)))
                 .thenReturn(mock(AppOpsManager.class));
+        doNothing().when(mContext).sendBroadcast(any(Intent.class));
         when(mContext.getSystemService(eq(Context.TELEPHONY_SERVICE)))
                 .thenReturn(mock(TelephonyManager.class));
         when(mContext.checkCallingOrSelfPermission(anyString()))
@@ -209,6 +227,50 @@ public class MmsSmsProviderTest {
                 if (cursor != null) {
                     cursor.close();
                 }
+            }
+        }
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_REDACT_OTP_SMS)
+    @DisableFlags(Flags.FLAG_SECURE_ACCESS_TO_RESTRICTED_RCS_MESSAGES)
+    public void testQuery_searchSuggest_withOtpFilter_returnsEmptyCursor() {
+        // Prepare a provider that returns false for canReadOtpSms
+        MmsSmsProvider providerWithOtpFilter = new MmsSmsProvider() {
+            @Override
+            protected String getOtpFilter(int callerUid, String callingPackage,
+                    UserHandle callerUserHandle) {
+                return "1=1";
+            }
+        };
+        ProviderInfo mmsSmsProviderInfo = new ProviderInfo();
+        mmsSmsProviderInfo.authority = "mms-sms";
+        providerWithOtpFilter.attachInfo(mContext, mmsSmsProviderInfo);
+
+        // searchSuggest URI
+        Uri testUri = Uri.parse("content://mms-sms/searchSuggest")
+                .buildUpon()
+                .appendQueryParameter("pattern", "test")
+                .build();
+
+        // Query the provider
+        Cursor cursor = providerWithOtpFilter.query(testUri, null, null, null, null);
+
+        assertNotNull("Cursor should not be null", cursor);
+        assertEquals("Cursor should be empty when otpFilter is active", 0, cursor.getCount());
+    }
+
+    @Test
+    public void testQuery_withNullProjection_doesNotThrowNPE() {
+        Cursor cursor = null;
+        try {
+            Uri testUri = Uri.parse("content://mms-sms/complete-conversations");
+            String[] projection = null;
+            // This should default to UNION_COLUMNS and not throw an NPE
+            cursor = mMmsSmsProvider.query(testUri, projection, null, null, null);
+        } finally {
+            if (cursor != null) {
+                cursor.close();
             }
         }
     }

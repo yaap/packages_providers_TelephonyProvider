@@ -103,6 +103,7 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.PersistableBundle;
 import android.os.Process;
@@ -130,11 +131,14 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.telephony.TelephonyPermissions;
 import com.android.internal.telephony.TelephonyStatsLog;
+import com.android.internal.telephony.flags.Flags;
+import com.android.internal.telephony.util.WorkerThread;
 import com.android.internal.util.XmlUtils;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileDescriptor;
@@ -165,7 +169,14 @@ public class TelephonyProvider extends ContentProvider
     private static final boolean DBG = true;
     private static final boolean VDBG = false; // STOPSHIP if true
 
-    private static final int DATABASE_VERSION = 74 << 16;
+    private Handler mBackupHandler;
+
+    @VisibleForTesting
+    protected void setBackupHandler(Handler handler) {
+        mBackupHandler = handler;
+    }
+
+    private static final int DATABASE_VERSION = 78 << 16;
     private static final int URL_UNKNOWN = 0;
     private static final int URL_TELEPHONY = 1;
     private static final int URL_CURRENT = 2;
@@ -282,6 +293,7 @@ public class TelephonyProvider extends ContentProvider
     static Boolean s_apnSourceServiceExists;
 
     protected final Object mLock = new Object();
+    private final Object mSimSettingsFileLock = new Object();
     @GuardedBy("mLock")
     private IApnSourceService mIApnSourceService;
     private Injector mInjector;
@@ -504,6 +516,8 @@ public class TelephonyProvider extends ContentProvider
         SIM_INFO_COLUMNS_TO_BACKUP.put(
                 Telephony.SimInfo.COLUMN_SATELLITE_ENTITLEMENT_VOICE_SERVICE_POLICY,
                 Cursor.FIELD_TYPE_STRING);
+        SIM_INFO_COLUMNS_TO_BACKUP.put(
+                Telephony.SimInfo.COLUMN_IS_PRIVATE_NETWORK, Cursor.FIELD_TYPE_INTEGER);
     }
 
     @VisibleForTesting
@@ -639,6 +653,7 @@ public class TelephonyProvider extends ContentProvider
                 + Telephony.SimInfo.COLUMN_NR_ADVANCED_CALLING_ENABLED + " INTEGER DEFAULT -1,"
                 + Telephony.SimInfo.COLUMN_PHONE_NUMBER_SOURCE_CARRIER + " TEXT,"
                 + Telephony.SimInfo.COLUMN_PHONE_NUMBER_SOURCE_IMS + " TEXT,"
+                + Telephony.SimInfo.COLUMN_PHONE_NUMBER_SOURCE_TS43 + " TEXT,"
                 + Telephony.SimInfo.COLUMN_PORT_INDEX + "  INTEGER DEFAULT -1,"
                 + Telephony.SimInfo.COLUMN_USAGE_SETTING + " INTEGER DEFAULT "
                 + SubscriptionManager.USAGE_SETTING_UNKNOWN + ","
@@ -648,7 +663,7 @@ public class TelephonyProvider extends ContentProvider
                 + UserHandle.USER_NULL + ","
                 + Telephony.SimInfo.COLUMN_SATELLITE_ENABLED + " INTEGER DEFAULT 0,"
                 + Telephony.SimInfo.COLUMN_SATELLITE_ATTACH_ENABLED_FOR_CARRIER
-                + " INTEGER DEFAULT 1, "
+                + " INTEGER DEFAULT -1, "
                 + Telephony.SimInfo.COLUMN_IS_ONLY_NTN + " INTEGER DEFAULT 0, "
                 + Telephony.SimInfo.COLUMN_SERVICE_CAPABILITIES + " INTEGER DEFAULT "
                 + SubscriptionManager.getAllServiceCapabilityBitmasks() + ","
@@ -662,7 +677,10 @@ public class TelephonyProvider extends ContentProvider
                 + Telephony.SimInfo.COLUMN_SATELLITE_ENTITLEMENT_DATA_PLAN_PLMNS + " TEXT,"
                 + Telephony.SimInfo.COLUMN_SATELLITE_ENTITLEMENT_SERVICE_TYPE_MAP + " TEXT,"
                 + Telephony.SimInfo.COLUMN_SATELLITE_ENTITLEMENT_DATA_SERVICE_POLICY + " TEXT,"
-                + Telephony.SimInfo.COLUMN_SATELLITE_ENTITLEMENT_VOICE_SERVICE_POLICY + " TEXT"
+                + Telephony.SimInfo.COLUMN_SATELLITE_ENTITLEMENT_VOICE_SERVICE_POLICY + " TEXT,"
+                + Telephony.SimInfo.COLUMN_IS_PRIVATE_NETWORK + " INTEGER DEFAULT 0,"
+                + Telephony.SimInfo.COLUMN_STREAMING_APP_MAX_DOWNLINK_KBPS + " INTEGER DEFAULT -1,"
+                + Telephony.SimInfo.COLUMN_STREAMING_APP_MAX_UPLINK_KBPS + " INTEGER DEFAULT -1"
                 + ");";
     }
 
@@ -2247,6 +2265,75 @@ public class TelephonyProvider extends ContentProvider
                 }
                 oldVersion = 74 << 16 | 6;
             }
+
+            if (oldVersion < (75 << 16 | 6)) {
+                try {
+                    // Try to update the siminfo table with new columns.
+                    db.execSQL("ALTER TABLE " + SIMINFO_TABLE + " ADD COLUMN "
+                            + Telephony.SimInfo.COLUMN_PHONE_NUMBER_SOURCE_TS43
+                            + " TEXT;");
+                } catch (SQLiteException e) {
+                    if (DBG) {
+                        log("onUpgrade failed to update " + SIMINFO_TABLE
+                                + " to add phone numbers. ");
+                    }
+                }
+                oldVersion = 75 << 16 | 6;
+            }
+
+            if (oldVersion < (76 << 16 | 6)) {
+                try {
+                    // Try to update the siminfo table with new columns.
+                    db.execSQL("ALTER TABLE " + SIMINFO_TABLE + " ADD COLUMN "
+                            + Telephony.SimInfo.COLUMN_IS_PRIVATE_NETWORK
+                            + " INTEGER DEFAULT 0;");
+                } catch (SQLiteException e) {
+                    if (DBG) {
+                        log("onUpgrade failed to update " + SIMINFO_TABLE
+                                + " to add is private network.");
+                    }
+                }
+                oldVersion = 76 << 16 | 6;
+            }
+
+            if (oldVersion < (77 << 16 | 6)) {
+                try {
+                    // Try to update the siminfo table with new columns.
+                    db.execSQL("ALTER TABLE " + SIMINFO_TABLE + " ADD COLUMN "
+                            + Telephony.SimInfo
+                            .COLUMN_STREAMING_APP_MAX_DOWNLINK_KBPS
+                            + "  INTEGER DEFAULT -1;");
+                    db.execSQL("ALTER TABLE " + SIMINFO_TABLE + " ADD COLUMN "
+                            + Telephony.SimInfo
+                            .COLUMN_STREAMING_APP_MAX_UPLINK_KBPS
+                            + "  INTEGER DEFAULT -1;");
+                } catch (SQLiteException e) {
+                    if (DBG) {
+                        log("onUpgrade failed to update " + SIMINFO_TABLE
+                                + " to add phone numbers. ");
+                    }
+                }
+                oldVersion = 77 << 16 | 6;
+            }
+
+            if (oldVersion < (78 << 16 | 6)) {
+                // Satellite attach should follow the device-specific configuration overlay.
+                // Previous database versions incorrectly defaulted to 1 (enabled). We update
+                // all existing rows to -1 (unset) so the config overlay
+                // (config_satellite_enabled_reason_user_default) is respected.
+                try {
+                    db.execSQL("UPDATE " + SIMINFO_TABLE + " SET "
+                            + Telephony.SimInfo.COLUMN_SATELLITE_ATTACH_ENABLED_FOR_CARRIER
+                            + "=-1");
+                } catch (SQLiteException e) {
+                    if (DBG) {
+                        log("onUpgrade failed to update " + SIMINFO_TABLE
+                                + " to set satellite attach enabled to unset (-1)");
+                    }
+                }
+                oldVersion = 78 << 16 | 6;
+            }
+
             if (DBG) {
                 log("dbh.onUpgrade:- db=" + db + " oldV=" + oldVersion + " newV=" + newVersion);
             }
@@ -3480,6 +3567,10 @@ public class TelephonyProvider extends ContentProvider
     public boolean onCreate() {
         mOpenHelper = new DatabaseHelper(getContext());
         mDefaultSubId = SubscriptionManager.getDefaultSubscriptionId();
+        if (Flags.writeSimAsync()) {
+            // Initialize the handler used for background backup tasks.
+            mBackupHandler = WorkerThread.getHandler();
+        }
         boolean isNewBuild = false;
         String newBuildId = SystemProperties.get("ro.build.id", null);
         SharedPreferences sp = getContext().getSharedPreferences(BUILD_ID_FILE,
@@ -3771,12 +3862,25 @@ public class TelephonyProvider extends ContentProvider
         return resultBundle;
     }
 
+    private @Nullable PersistableBundle dataToPersistableBundle(byte[] data) {
+        if (data == null) return null;
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(data)) {
+            return PersistableBundle.readFromStream(bis);
+        } catch (IOException e) {
+            loge("Failed to convert byte[] to PersistableBundle" + e);
+            return null;
+        }
+    }
+
     /**
      * Attempts to restore the backed up sim-specific configs to device. End result is SimInfoDB is
      * modified to match any backed up configs for the appropriate inserted sims.
      *
-     * @param bundle containing the data to be restored. If {@code null}, then backed up
-     * data should already be in internal storage and will be retrieved from there.
+     * @param bundle A {@link PersistableBundle} containing the data to be restored. This bundle
+     * is typically created by {@link #getSimSpecificDataToBackUp()} and contains a top-level
+     * bundle with {@link #KEY_BACKUP_DATA_FORMAT_VERSION} and nested {@link PersistableBundle}s
+     * for each SimInfoDB row, keyed by {@link #KEY_SIMINFO_DB_ROW_PREFIX}. If {@code null},
+     * then backed up data should already be in internal storage and will be retrieved from there.
      * @param iccId of the SIM that a restore is being attempted for. If {@code null}, then try to
      * restore for all simInfo entries in SimInfoDB
      *
@@ -3784,20 +3888,76 @@ public class TelephonyProvider extends ContentProvider
      */
     private boolean restoreSimSpecificSettings(@Nullable Bundle bundle, @Nullable String iccId) {
         int restoreCase = TelephonyProtoEnums.SIM_RESTORE_CASE_UNDEFINED_USE_CASE;
+        PersistableBundle persistableBundle = null;
         if (bundle != null) {
             restoreCase = TelephonyProtoEnums.SIM_RESTORE_CASE_SUW;
-            if (!writeSimSettingsToInternalStorage(
-                    bundle.getByteArray(SubscriptionManager.KEY_SIM_SPECIFIC_SETTINGS_DATA))) {
+            byte[] data = bundle.getByteArray(SubscriptionManager.KEY_SIM_SPECIFIC_SETTINGS_DATA);
+            if (Flags.writeSimAsync()) {
+                // Handle backup data by either caching it for merging or writing to storage.
+                persistableBundle = dataToPersistableBundle(data);
+            } else if (!writeSimSettingsToInternalStorage(data)) {
                 return false;
             }
-        } else if (iccId != null){
+        } else if (iccId != null) {
             restoreCase = TelephonyProtoEnums.SIM_RESTORE_CASE_SIM_INSERTED;
         }
-        return mergeBackedUpDataToSimInfoDb(restoreCase, iccId);
+        return mergeBackedUpDataToSimInfoDb(restoreCase, iccId, persistableBundle);
+    }
+
+    @GuardedBy("mSimSettingsFileLock")
+    private PersistableBundle readSimSettingsLocked() throws IOException {
+        File file = new File(getContext().getFilesDir(), BACKED_UP_SIM_SPECIFIC_SETTINGS_FILE);
+        if (file.exists()) {
+            AtomicFile atomicFile = new AtomicFile(file);
+            try (FileInputStream fis = atomicFile.openRead()) {
+                PersistableBundle bundle = PersistableBundle.readFromStream(fis);
+                return bundle;
+            }
+        }
+        return null;
+    }
+
+    @GuardedBy("mSimSettingsFileLock")
+    private boolean writeSimSettingsLocked(byte[] data) {
+        AtomicFile atomicFile = new AtomicFile(
+                new File(getContext().getFilesDir(), BACKED_UP_SIM_SPECIFIC_SETTINGS_FILE));
+        FileOutputStream fos = null;
+        try {
+            fos = atomicFile.startWrite();
+            fos.write(data);
+            atomicFile.finishWrite(fos);
+            return true;
+        } catch (IOException e) {
+            if (fos != null) {
+                atomicFile.failWrite(fos);
+            }
+            loge("Not able to create internal file with per-sim configs. Failed with error "
+                    + e);
+            return false;
+        }
+    }
+
+    /**
+     * Asynchronously writes the SIM-specific settings data to internal storage.
+     * This operation is performed on a background thread to avoid blocking the caller.
+     *
+     * @param data The byte array representing the SIM-specific settings to be backed up.
+     */
+    @VisibleForTesting
+    void writeSimSettingsToInternalStorageAsync(byte[] data) {
+        mBackupHandler.post(() -> {
+            writeSimSettingsToInternalStorage(data);
+        });
     }
 
     @VisibleForTesting
     boolean writeSimSettingsToInternalStorage(byte[] data) {
+        if (Flags.writeSimAsync()) {
+            synchronized (mSimSettingsFileLock) {
+                return writeSimSettingsLocked(data);
+            }
+        }
+
         AtomicFile atomicFile = new AtomicFile(
                 new File(getContext().getFilesDir(), BACKED_UP_SIM_SPECIFIC_SETTINGS_FILE));
         FileOutputStream fos = null;
@@ -3825,25 +3985,46 @@ public class TelephonyProvider extends ContentProvider
      * frameworks/proto_logging/stats/enums/telephony/enums.proto
      * @param iccId of the SIM that a restore is being attempted for. If {@code null}, then try to
      * restore for all simInfo entries in SimInfoDB
+     * @param cachedBundle The cached bundle to use for restore, if available.
      *
      * @return {@code true} if the restoration changed the subscription database.
      */
-    private boolean mergeBackedUpDataToSimInfoDb(int restoreCase, @Nullable String iccId) {
-        // Get data stored in internal file
-        File file = new File(getContext().getFilesDir(), BACKED_UP_SIM_SPECIFIC_SETTINGS_FILE);
-        if (!file.exists()) {
-            loge("internal sim-specific settings backup data file does not exist. "
-                + "Aborting restore");
-            return false;
+    private boolean mergeBackedUpDataToSimInfoDb(int restoreCase, @Nullable String iccId,
+            @Nullable PersistableBundle cachedBundle) {
+        PersistableBundle bundle = null;
+
+        if (Flags.writeSimAsync()) {
+            if (cachedBundle != null) {
+                log("mergeBackedUpDataToSimInfoDb: using in-memory cachedBundle");
+                bundle = cachedBundle;
+            } else {
+                synchronized (mSimSettingsFileLock) {
+                    try {
+                        log("mergeBackedUpDataToSimInfoDb: reading from internal storage");
+                        bundle = readSimSettingsLocked();
+                    } catch (IOException e) {
+                        loge("Failed to convert backed up per-sim configs to bundle. "
+                                + "Failed with error " + e);
+                        bundle = new PersistableBundle();
+                    }
+                }
+            }
+        } else {
+            File file = new File(getContext().getFilesDir(), BACKED_UP_SIM_SPECIFIC_SETTINGS_FILE);
+            if (file.exists()) {
+                AtomicFile atomicFile = new AtomicFile(file);
+                try (FileInputStream fis = atomicFile.openRead()) {
+                    bundle = PersistableBundle.readFromStream(fis);
+                } catch (IOException e) {
+                    loge("Failed to convert backed up per-sim configs to bundle. "
+                            + "Failed with error " + e);
+                }
+            }
         }
 
-        AtomicFile atomicFile = new AtomicFile(file);
-        PersistableBundle bundle = null;
-        try (FileInputStream fis = atomicFile.openRead()) {
-            bundle = PersistableBundle.readFromStream(fis);
-        } catch (IOException e) {
-            loge("Failed to convert backed up per-sim configs to bundle. Stopping restore. "
-                + "Failed with error " + e);
+        if (bundle == null) {
+            loge("internal sim-specific settings backup data file does not exist. "
+                    + "Aborting restore");
             return false;
         }
 
@@ -3868,6 +4049,7 @@ public class TelephonyProvider extends ContentProvider
                 ORDER_BY_SUB_ID)) {
             return findAndRestoreAllMatches(bundle.deepCopy(), cursor, restoreCase);
         }
+
     }
 
     /**
@@ -4019,11 +4201,17 @@ public class TelephonyProvider extends ContentProvider
                 previouslyRestoredSubIdsList.stream().mapToInt(i -> i).toArray());
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             backedUpDataBundle.writeToStream(outputStream);
-            writeSimSettingsToInternalStorage(outputStream.toByteArray());
+            if (Flags.writeSimAsync()) {
+                // Persist the updated list of restored subscriptions to internal storage.
+                writeSimSettingsToInternalStorageAsync(outputStream.toByteArray());
+            } else {
+                writeSimSettingsToInternalStorage(outputStream.toByteArray());
+            }
         } catch (IOException e) {
             loge("Not able to convert SimInfoDB to byte array. Not storing which subIds were "
                     + "restored");
         }
+        log("mergeBackedUpDataToSimInfoDb: restoration complete. changed=" + changed);
         return changed;
     }
 
@@ -4129,7 +4317,7 @@ public class TelephonyProvider extends ContentProvider
                 PersistableBundle backedUpSimInfoEntry, int backupDataFormatVersion,
                 String isoCountryCodeFromDb, String allowedNetworkTypesForReasonsFromDb,
                 List<String> wfcRestoreBlockedCountries) {
-            if (DATABASE_VERSION != 74 << 16) {
+            if (DATABASE_VERSION != 78 << 16) {
                 throw new AssertionError("The database schema has been updated which might make "
                     + "the format of #BACKED_UP_SIM_SPECIFIC_SETTINGS_FILE outdated. Make sure to "
                     + "1) review whether any of the columns in #SIM_INFO_COLUMNS_TO_BACKUP have "
@@ -5726,13 +5914,13 @@ public class TelephonyProvider extends ContentProvider
                 Context.MODE_PRIVATE);
         SharedPreferences.Editor editorApnId = spApnId.edit();
         editorApnId.clear();
-        editorApnId.apply();
+        editorApnId.commit();
 
         SharedPreferences spApn = getContext().getSharedPreferences(PREF_FILE_FULL_APN,
                 Context.MODE_PRIVATE);
         SharedPreferences.Editor editorApn = spApn.edit();
         editorApn.clear();
-        editorApn.apply();
+        editorApn.commit();
 
         if (apnSourceServiceExists(getContext())) {
             restoreApnsWithService(subId);
